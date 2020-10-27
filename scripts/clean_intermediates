@@ -1,0 +1,95 @@
+#!/bin/bash
+
+# Clean Intermediate Docker images and containers on build fail
+
+# Process
+# Stop and delete unnamed containers (chances are they aren't runnign anyway)
+# delete primary build image
+
+# Sudo Prefix, if neede
+PREFIX=""
+
+# Temp File
+TMP=/tmp/clean_intermediates.txt.${RANDOM}
+
+# Arrays
+
+declare -a cids
+declare -a iids
+declare -a cntitems
+declare -a imgitems
+
+#
+# Functions
+#
+
+# Remove Tmp File(s)
+function RmTmp()
+{
+	[ -f "${TMP}" ] && rm "${TMP}"
+}
+
+
+#
+# Main Loop
+#
+
+[ ! "${LOGNAME}" = "root" ] && PREFIX="sudo"
+
+${PREFIX} docker ps -a --format="{{.ID}} {{.Image}} {{.Names}}" > "${TMP}"
+chmod +r "${TMP}"
+
+while read cid image name crap; do
+	cids[${#cids[@]}]="${cid}"
+	cntitems[${#cntitems[@]}]="${name} (${cid}/${image})"
+done < "${TMP}"
+
+cntitems[${#cntitems[@]}]="Skip"
+cntitems[${#cntitems[@]}]="Quit"
+
+RmTmp
+
+printf "Intermediate Containers\n=======================\n"
+
+# User select Container
+select item in "${cntitems[@]}"; do
+	[ "${item}" = "Skip" ] && break
+	[ "${item}" = "Quit" ] && exit 0
+	[ "${item}" = "" ] && exit 0
+
+	index=$(( ${REPLY} - 1 ))
+
+	${PREFIX} docker stop ${cids[${index}]} > /dev/null 2>1
+	${PREFIX} docker rm ${cids[${index}]}
+
+	break
+done
+
+${PREFIX} docker image ls --format="{{.ID}} {{.Repository}} {{.Tag}} {{.CreatedAt}}" > "${TMP}"
+chmod +r "${TMP}"
+
+while read iid repo tag createdat; do
+	[ ! "${repo}" = "<none>" ] && continue
+
+	iids[${#iids[@]}]="${iid}"
+	imgitems[${#imgitems[@]}]="${repo} ${tag} (${iid}/${createdat})"
+done < "${TMP}"
+
+imgitems[${#imgitems[@]}]="Quit"
+
+RmTmp
+
+[ ${#iids[@]} -eq 0 ] && printf "No intermediate images found\n" && exit 0
+
+printf "Intermediate Images\n===================\n"
+
+select item in "${imgitems[@]}"; do
+	[ "${item}" = "Quit" ] && break
+	[ "${item}" = "" ] && break
+
+	index=$(( ${REPLY} - 1 ))
+
+	${PREFIX} docker image rm ${iids[${index}]}
+
+	break
+done

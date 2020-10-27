@@ -1,0 +1,15 @@
+version: '3'
+services:
+  web:
+    build: .
+    environment:
+      - TZ=America/New_York
+      - DEBIAN_FRONTEND=noninteractive
+    restart: always
+    container_name: websites
+    ports:
+    - "80:80/tcp"
+    - "443:443/tcp"
+    volumes:
+    - /srv/storage/projects/websites/website:/usr/local/apache2/website
+    - /srv/storage/projects/websites/default:/usr/local/apache2/htdocs
